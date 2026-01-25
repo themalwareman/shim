@@ -69,8 +69,8 @@ namespace shm {
             event& operator=(const event&) = delete;
 
             // Move construct and move assign are also deleted
-            event(event&&) noexcept = delete;
-            event& operator=(event&&) noexcept = delete;
+            event(event&&) = delete;
+            event& operator=(event&&) = delete;
 
             // Destructor
             ~event() = default;
@@ -98,8 +98,8 @@ namespace shm {
         event& operator=(const event&) = delete;
 
         // Non-movable
-        event(event&&) noexcept = delete;
-        event& operator=(event&&) noexcept = delete;
+        event(event&&) = delete;
+        event& operator=(event&&) = delete;
 
         // Default destructor is sufficient
         ~event() = default;
@@ -177,8 +177,8 @@ namespace shm {
     private:
         std::mutex _mutex;
         std::condition_variable _cv;
-        bool _signaled;
         mode _mode;
+        bool _signaled;
     };
 
 }
