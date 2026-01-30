@@ -5,7 +5,7 @@
     Copyright (c) 2026 themalwareman
 
     shim — small, header-only C++ utilities
-    https://github.com/<your-username>/shim
+    https://github.com/themalwareman/shim
 
     shm::synchronized<T> - a small utility for safe, scoped access to shared data,
                     combining a mutex and an object into a single abstraction.

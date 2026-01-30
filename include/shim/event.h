@@ -5,7 +5,7 @@
     Copyright (c) 2026 themalwareman
 
     shim — small, header-only C++ utilities
-    https://github.com/<your-username>/shim
+    https://github.com/themalwareman/shim
 
     shm::event - a lightweight, thread-safe manual- or auto-reset event for signaling
                     between threads, providing set, reset, and wait semantics
