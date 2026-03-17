@@ -16,6 +16,9 @@ target_compile_features(shim INTERFACE cxx_std_20)
 option(SHIM_BUILD_TESTS "Build shim tests" ON)
 option(SHIM_BUILD_EXAMPLES "Build shim examples" ON)
 
+# Enable our packages - currently just catch2
+add_subdirectory(packages)
+
 if (SHIM_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

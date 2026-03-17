@@ -35,7 +35,6 @@ namespace shm {
 
         Not void - Obviously a mistake, no point synchronizing access to nothing.
 
-
     */
 
     template<typename T>

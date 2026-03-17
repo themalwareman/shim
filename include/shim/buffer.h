@@ -193,7 +193,6 @@ namespace shm {
         /*
             Move construct & assign
         */
-
         constexpr buffer(buffer&& other) noexcept : _size(other._size), _data(other._data)
         {
             // No need for self assignment check in move constructor

@@ -45,11 +45,6 @@ namespace shm {
             std::thread worker([&]{ / do work / evt.set(); });
             evt.wait();  // wait for worker thread to signal completion
 
-    - Intended for general multi-threaded synchronization where you need a
-        simple set/reset/wait pattern.
-    - Does not store data: purely a signaling primitive.
-    - Lightweight and exception-safe.
-
     */
 
     class event {
@@ -78,10 +73,10 @@ namespace shm {
             // Waiting
             void wait()
             template <typename Rep, typename Period>
-            bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
+            [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
             template <typename Clock, typename Duration>
-            bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
-            bool try_wait()
+            [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
+            [[nodiscard]] bool try_wait()
 
             // Signalling
             void set()
@@ -89,9 +84,17 @@ namespace shm {
 
         */
 
+        /*
+            Constructors
+        */
+
         // Construct event in non-signaled or initially signaled state
         explicit event(mode mode = mode::manual_reset, bool signaled = false)
             : _mode(mode), _signaled(signaled) {}
+
+        /*
+            Copy/Assign/Move
+        */
 
         // Non-copyable
         event(const event&) = delete;
@@ -101,8 +104,16 @@ namespace shm {
         event(event&&) = delete;
         event& operator=(event&&) = delete;
 
+        /*
+            Destructor
+        */
+
         // Default destructor is sufficient
         ~event() = default;
+
+        /*
+            Waiting
+        */
 
         // Wait until event is signaled
         void wait() {
@@ -119,7 +130,7 @@ namespace shm {
         }
 
         template <typename Rep, typename Period>
-        bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
+        [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
         {
             // Grab mutex
             std::unique_lock<std::mutex> lock(_mutex);
@@ -134,7 +145,7 @@ namespace shm {
         }
 
         template <typename Clock, typename Duration>
-        bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
+        [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
         {
             // Grab mutex
             std::unique_lock<std::mutex> lock(_mutex);
@@ -149,7 +160,7 @@ namespace shm {
         }
 
         // Check the event state without waiting, preserves auto-reset semantics
-        bool try_wait() {
+        [[nodiscard]] bool try_wait() {
             std::lock_guard<std::mutex> lock(_mutex);
             bool signaled = _signaled;
             if (signaled && mode::auto_reset == _mode) {
@@ -157,6 +168,10 @@ namespace shm {
             }
             return signaled;
         }
+
+        /*
+            Signalling
+        */
 
         void set() {
             std::lock_guard<std::mutex> lock(_mutex);
