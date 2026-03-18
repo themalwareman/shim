@@ -186,222 +186,269 @@ TEST_CASE("set and reset - auto_reset", "[event][set][reset]") {
     }
 }
 
-/*
-    End-to-end Tests
-*/
-TEST_CASE("wait() - manual_reset - thread signals waiter", "[event][wait][manual_reset]") {
+TEST_CASE("wait() - manual_reset", "[event][wait][manual_reset]") {
 
-    shm::event ev(shm::event::mode::manual_reset);
-    std::atomic<bool> waiter_done{false};
+    /*
+        Test Cases:
 
-    std::thread waiter([&]{
-        ev.wait();
-        waiter_done.store(true, std::memory_order_release);
-    });
+        - Thread signals waiter
+        - Already signaled event returns immediately
+    */
 
-    std::this_thread::sleep_for(10ms);
-    CHECK_FALSE(waiter_done.load());
+    SECTION("Thread signals waiter") {
+        shm::event ev(shm::event::mode::manual_reset);
+        std::atomic<bool> waiter_done{false};
 
-    ev.set();
-    waiter.join();
-
-    CHECK(waiter_done.load());
-
-    CHECK(ev.try_wait());
-}
-
-TEST_CASE("wait() — manual_reset — already signaled returns immediately", "[event][wait][manual_reset]") {
-
-    shm::event ev(shm::event::mode::manual_reset, /*signaled=*/true);
-
-    auto start = std::chrono::steady_clock::now();
-    ev.wait();
-    auto elapsed = std::chrono::steady_clock::now() - start;
-
-    CHECK(elapsed < 20ms);   // should be essentially instantaneous
-}
-
-TEST_CASE("wait() — auto_reset — thread signals waiter, event resets", "[event][wait][auto_reset]") {
-
-    shm::event ev(shm::event::mode::auto_reset);
-    std::atomic<bool> waiter_done{false};
-
-    std::thread waiter([&]{
-        ev.wait();
-        waiter_done.store(true, std::memory_order_release);
-    });
-
-    std::this_thread::sleep_for(10ms);
-    ev.set();
-    waiter.join();
-
-    CHECK(waiter_done.load());
-    // auto-reset: event is no longer signaled
-    CHECK_FALSE(ev.try_wait());
-}
-
-TEST_CASE("wait_for() — returns false on timeout when not signaled", "[event][wait_for]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-
-    auto start   = std::chrono::steady_clock::now();
-    bool result  = ev.wait_for(EXPECT_TIMEOUT);
-    auto elapsed = std::chrono::steady_clock::now() - start;
-
-    CHECK_FALSE(result);
-    CHECK(elapsed >= EXPECT_TIMEOUT);
-}
-
-TEST_CASE("wait_for() — returns true when signaled before timeout", "[event][wait_for]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-    DelayedSetter setter(ev, 20ms);
-
-    bool result = ev.wait_for(SIGNAL_TIMEOUT);
-
-    CHECK(result);
-}
-
-TEST_CASE("wait_for() — returns true immediately if already signaled", "[event][wait_for]") {
-
-    shm::event ev(shm::event::mode::manual_reset, /*signaled=*/true);
-
-    auto start   = std::chrono::steady_clock::now();
-    bool result  = ev.wait_for(SIGNAL_TIMEOUT);
-    auto elapsed = std::chrono::steady_clock::now() - start;
-
-    CHECK(result);
-    CHECK(elapsed < 20ms);
-}
-
-TEST_CASE("wait_for() — auto_reset resets after successful wait", "[event][wait_for][auto_reset]") {
-
-    shm::event ev(shm::event::mode::auto_reset, /*signaled=*/true);
-
-    CHECK(ev.wait_for(SIGNAL_TIMEOUT));
-    CHECK_FALSE(ev.try_wait());   // auto-reset consumed it
-}
-
-TEST_CASE("wait_for() — manual_reset stays signaled after successful wait", "[event][wait_for][manual_reset]") {
-
-    shm::event ev(shm::event::mode::manual_reset, /*signaled=*/true);
-
-    CHECK(ev.wait_for(SIGNAL_TIMEOUT));
-    CHECK(ev.try_wait());   // still signaled
-}
-
-TEST_CASE("wait_for() — zero timeout acts as non-blocking check", "[event][wait_for]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-    CHECK_FALSE(ev.wait_for(0ms));
-
-    ev.set();
-    CHECK(ev.wait_for(0ms));
-}
-
-TEST_CASE("wait_until() — returns false when deadline already passed", "[event][wait_until]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-    auto past = std::chrono::steady_clock::now() - 1ms;
-
-    CHECK_FALSE(ev.wait_until(past));
-}
-
-TEST_CASE("wait_until() — returns false on timeout when not signaled", "[event][wait_until]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-    auto deadline = std::chrono::steady_clock::now() + EXPECT_TIMEOUT;
-
-    auto start   = std::chrono::steady_clock::now();
-    bool result  = ev.wait_until(deadline);
-    auto elapsed = std::chrono::steady_clock::now() - start;
-
-    CHECK_FALSE(result);
-    CHECK(elapsed >= EXPECT_TIMEOUT);
-}
-
-TEST_CASE("wait_until() — returns true when signaled before deadline", "[event][wait_until]") {
-
-    shm::event ev(shm::event::mode::manual_reset);
-    DelayedSetter setter(ev, 20ms);
-
-    auto deadline = std::chrono::steady_clock::now() + SIGNAL_TIMEOUT;
-    bool result   = ev.wait_until(deadline);
-
-    CHECK(result);
-}
-
-TEST_CASE("wait_until() — auto_reset resets after successful wait_until", "[event][wait_until][auto_reset]") {
-
-    shm::event ev(shm::event::mode::auto_reset, /*signaled=*/true);
-    auto deadline = std::chrono::steady_clock::now() + SIGNAL_TIMEOUT;
-
-    CHECK(ev.wait_until(deadline));
-    CHECK_FALSE(ev.try_wait());
-}
-
-
-// ===========================================================================
-// Section 7 — Multi-waiter behaviour
-// ===========================================================================
-
-TEST_CASE("Manual-reset wakes all waiters on set()", "[event][multi_waiter][manual_reset]") {
-
-    constexpr int NUM_WAITERS = 8;
-    shm::event ev(shm::event::mode::manual_reset);
-    std::atomic<int> woken{0};
-
-    std::vector<std::thread> threads;
-    threads.reserve(NUM_WAITERS);
-
-    for (int i = 0; i < NUM_WAITERS; ++i) {
-        threads.emplace_back([&]{
+        std::thread waiter([&]{
             ev.wait();
-            woken.fetch_add(1, std::memory_order_relaxed);
+            waiter_done.store(true, std::memory_order_release);
         });
-    }
 
-    std::this_thread::sleep_for(20ms);   // let all threads block
-    ev.set();
+        std::this_thread::sleep_for(10ms);
 
-    for (auto& t : threads) t.join();
+        // Check its false
+        CHECK_FALSE(waiter_done.load());
 
-    CHECK(woken.load() == NUM_WAITERS);
-    CHECK(ev.try_wait());   // event remains signaled
-}
-
-TEST_CASE("Auto-reset wakes exactly one waiter per set()", "[event][multi_waiter][auto_reset]") {
-
-    constexpr int NUM_SIGNALS = 5;
-    shm::event ev(shm::event::mode::auto_reset);
-    std::atomic<int> woken{0};
-
-    // NUM_SIGNALS waiters all pile up
-    std::vector<std::thread> threads;
-    threads.reserve(NUM_SIGNALS);
-
-    for (int i = 0; i < NUM_SIGNALS; ++i) {
-        threads.emplace_back([&]{
-            ev.wait();
-            woken.fetch_add(1, std::memory_order_relaxed);
-        });
-    }
-
-    std::this_thread::sleep_for(20ms);   // let all threads block
-
-    // Fire one signal per waiter
-    for (int i = 0; i < NUM_SIGNALS; ++i) {
+        // Unblock the waiter
         ev.set();
-        // Give the released thread time to increment woken before next set
-        std::this_thread::sleep_for(5ms);
-        CHECK(woken.load() == i + 1);
+        // Wait for waiter to finish
+        waiter.join();
+
+        // Check its updated the bool
+        CHECK(waiter_done.load());
+        // Manual reset means we should be able to go straight through as its still signalled
+        CHECK(ev.try_wait());
     }
 
-    for (auto& t : threads) t.join();
+    SECTION("Already signaled event returns immediately") {
+        shm::event ev(shm::event::mode::manual_reset, true);
 
-    CHECK(woken.load() == NUM_SIGNALS);
-    CHECK_FALSE(ev.try_wait());   // no leftover signal
+        auto start = std::chrono::steady_clock::now();
+        ev.wait();
+        auto elapsed = std::chrono::steady_clock::now() - start;
+
+        CHECK(elapsed < 20ms);
+        CHECK(ev.try_wait());
+    }
+
 }
+
+TEST_CASE("wait() — auto_reset", "[event][wait][auto_reset]") {
+
+    /*
+        Test Cases:
+
+        - Thread signals waiter
+    */
+
+    SECTION("Thread signals waiter") {
+        shm::event ev(shm::event::mode::auto_reset);
+        std::atomic<bool> waiter_done{false};
+
+        std::thread waiter([&]{
+            ev.wait();
+            waiter_done.store(true, std::memory_order_release);
+        });
+
+        std::this_thread::sleep_for(10ms);
+        ev.set();
+        waiter.join();
+
+        CHECK(waiter_done.load());
+        // Check event is no longer signaled
+        CHECK_FALSE(ev.try_wait());
+    }
+}
+
+TEST_CASE("wait_for()", "[event][wait_for]") {
+
+    /*
+        Test Cases:
+
+        - Returns false when not signaled
+        - Returns true if signaled
+        - Returns immediately if already signaled
+        - Auto-reset rests after successful wait_for
+        - Manual reset stays signaled after successful wait_for
+        - Zero timeout acts as non-blocking check
+    */
+
+    SECTION("Returns false when not signaled") {
+        shm::event ev(shm::event::mode::manual_reset);
+
+        auto start   = std::chrono::steady_clock::now();
+        bool result  = ev.wait_for(EXPECT_TIMEOUT);
+        auto elapsed = std::chrono::steady_clock::now() - start;
+
+        CHECK_FALSE(result);
+        CHECK(elapsed >= EXPECT_TIMEOUT);
+    }
+
+    SECTION("Returns true if signaled") {
+        shm::event ev(shm::event::mode::manual_reset);
+        DelayedSetter setter(ev, 20ms);
+
+        bool result = ev.wait_for(SIGNAL_TIMEOUT);
+
+        CHECK(result);
+    }
+
+    SECTION("Returns immediately if already signaled") {
+        shm::event ev(shm::event::mode::manual_reset, /*signaled=*/true);
+
+        auto start   = std::chrono::steady_clock::now();
+        bool result  = ev.wait_for(SIGNAL_TIMEOUT);
+        auto elapsed = std::chrono::steady_clock::now() - start;
+
+        CHECK(result);
+        CHECK(elapsed < 20ms);
+    }
+
+    SECTION("Auto-reset rests after successful wait_for") {
+        shm::event ev(shm::event::mode::auto_reset, /*signaled=*/true);
+
+        CHECK(ev.wait_for(SIGNAL_TIMEOUT));
+        CHECK_FALSE(ev.try_wait());
+    }
+
+    SECTION("Manual reset stays signaled after successful wait_for") {
+        shm::event ev(shm::event::mode::manual_reset, /*signaled=*/true);
+
+        CHECK(ev.wait_for(SIGNAL_TIMEOUT));
+        CHECK(ev.try_wait());
+    }
+
+    SECTION("Zero timeout acts as non-blocking check") {
+        shm::event ev(shm::event::mode::manual_reset);
+
+        auto start   = std::chrono::steady_clock::now();
+        CHECK_FALSE(ev.wait_for(0ms));
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        CHECK(elapsed < 20ms);
+
+        ev.set();
+        start   = std::chrono::steady_clock::now();
+        CHECK(ev.wait_for(0ms));
+        elapsed = std::chrono::steady_clock::now() - start;
+        CHECK(elapsed < 20ms);
+    }
+}
+
+TEST_CASE("wait_until()", "[event][wait_until]") {
+
+    /*
+        Test Cases:
+
+        - Returns false when deadline already passed
+        - Returns false on timeout when not signaled
+        - Returns true when signaled before deadline
+        - Auto_reset resets after successful wait_until
+    */
+
+    SECTION("Returns false when deadline already passed") {
+        shm::event ev(shm::event::mode::manual_reset);
+        auto past = std::chrono::steady_clock::now() - 1ms;
+
+        CHECK_FALSE(ev.wait_until(past));
+    }
+
+    SECTION("Returns false on timeout when not signaled") {
+        shm::event ev(shm::event::mode::manual_reset);
+        auto deadline = std::chrono::steady_clock::now() + EXPECT_TIMEOUT;
+
+        auto start   = std::chrono::steady_clock::now();
+        bool result  = ev.wait_until(deadline);
+        auto elapsed = std::chrono::steady_clock::now() - start;
+
+        CHECK_FALSE(result);
+        CHECK(elapsed >= EXPECT_TIMEOUT);
+    }
+
+    SECTION("Returns true when signaled before deadline") {
+        shm::event ev(shm::event::mode::manual_reset);
+        DelayedSetter setter(ev, 20ms);
+
+        auto deadline = std::chrono::steady_clock::now() + SIGNAL_TIMEOUT;
+        bool result   = ev.wait_until(deadline);
+
+        CHECK(result);
+    }
+
+    SECTION("Auto_reset resets after successful wait_until") {
+        shm::event ev(shm::event::mode::auto_reset, /*signaled=*/true);
+        auto deadline = std::chrono::steady_clock::now() + SIGNAL_TIMEOUT;
+
+        CHECK(ev.wait_until(deadline));
+        CHECK_FALSE(ev.try_wait());
+    }
+}
+
+TEST_CASE("Multiple waiters", "[event][multi_waiter]") {
+    /*
+        Test Cases:
+
+        - Manual-reset wakes all waiters on set()
+        - Auto-reset wakes exactly one waiter per set()
+    */
+
+    SECTION("Manual-reset wakes all waiters on set()") {
+        constexpr int NUM_WAITERS = 8;
+        shm::event ev(shm::event::mode::manual_reset);
+        std::atomic<int> woken{0};
+
+        std::vector<std::thread> threads;
+        threads.reserve(NUM_WAITERS);
+
+        for (int i = 0; i < NUM_WAITERS; ++i) {
+            threads.emplace_back([&]{
+                ev.wait();
+                woken.fetch_add(1, std::memory_order_relaxed);
+            });
+        }
+
+        std::this_thread::sleep_for(20ms);   // let all threads block
+        ev.set();
+
+        for (auto& t : threads) t.join();
+
+        CHECK(woken.load() == NUM_WAITERS);
+        CHECK(ev.try_wait());
+    }
+
+    SECTION("Auto-reset wakes exactly one waiter per set()") {
+        constexpr int NUM_SIGNALS = 5;
+        shm::event ev(shm::event::mode::auto_reset);
+        std::atomic<int> woken{0};
+
+        // NUM_SIGNALS waiters all pile up
+        std::vector<std::thread> threads;
+        threads.reserve(NUM_SIGNALS);
+
+        for (int i = 0; i < NUM_SIGNALS; ++i) {
+            threads.emplace_back([&]{
+                ev.wait();
+                woken.fetch_add(1, std::memory_order_relaxed);
+            });
+        }
+
+        std::this_thread::sleep_for(20ms);   // let all threads block
+
+        // Fire one signal per waiter
+        for (int i = 0; i < NUM_SIGNALS; ++i) {
+            ev.set();
+            // Give the released thread time to increment woken before next set
+            std::this_thread::sleep_for(5ms);
+            CHECK(woken.load() == i + 1);
+        }
+
+        for (auto& t : threads) t.join();
+
+        CHECK(woken.load() == NUM_SIGNALS);
+        CHECK_FALSE(ev.try_wait());
+    }
+}
+
+
 
 
 // ===========================================================================
