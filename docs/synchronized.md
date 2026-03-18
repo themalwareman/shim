@@ -2,9 +2,9 @@
 
 ## :bookmark: Overview
 
-A small utility that combines a value and a mutex into a single abstraction, providing safe, scoped access to shared data.
+A small utility for safe, scoped access to shared data, combining a mutex and an object into a single abstraction.
 
-Designed to reduce the chances of forgetting to lock a mutex, while keeping access patterns explicit and easy to read.
+Makes it impossible to forget to lock the mutex, but makes keeps access simple, explicit and easy to follow.
 
 ---
 
@@ -25,23 +25,6 @@ int result = value.with_shared([](const int& v) {
     return v;
 });
 ```
-
----
-
-## :brain: When to Use
-
-Use this when you want:
-
-* A simple way to pair data with its mutex
-* To avoid manually managing `std::mutex` / `std::shared_mutex`
-* Safer access patterns in multithreaded code
-* Clear, scoped locking
-
-Typical use cases:
-
-* Shared state between threads
-* Protecting small pieces of mutable data
-* Replacing "mutex + variable" pairs scattered through code
 
 ---
 
@@ -67,7 +50,7 @@ auto guard = value.lock();
 guard->do_something();
 
 auto shared = value.lock_shared();
-auto x = shared->get();
+auto x = shared->access_value();
 ```
 
 * RAII-style locking
@@ -86,7 +69,7 @@ template <typename... Args>
 explicit synchronized(Args&&... args);
 ```
 
-Constructs the underlying value in-place.
+The constructor allows you to construct a value in place, say if you wanted to guard a map that started with some pre-filled values.
 
 ---
 
@@ -139,20 +122,3 @@ Returns RAII guards that hold the lock for the lifetime of the object.
 * Not be `void`
 
 These restrictions help prevent misuse and ensure meaningful synchronization.
-
----
-
-## :bulb: Design Notes
-
-This is intentionally a minimal abstraction:
-
-* Encourages correct locking by construction
-* Keeps access explicit rather than implicit
-* Avoids exposing the mutex directly
-
-Two access styles are provided:
-
-* **Callable (`with_*`)** for safety and simplicity
-* **Guards (`lock`)** for flexibility when needed
-
-If you require fine-grained control over locking behaviour, using `std::shared_mutex` directly may still be more appropriate.

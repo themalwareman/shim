@@ -2,9 +2,7 @@
 
 ## :bookmark: Overview
 
-A minimal owning array for trivially copyable types.
-
-`shm::buffer<T>` is essentially a `std::unique_ptr<T[]>` that also tracks its size, designed for raw data storage where the overhead and semantics of `std::vector` are unnecessary.
+A minimal owning array for trivially copyable types, essentially a `std::unique_ptr<T[]>` to a dynamically allocated array that also tracks its size. Designed for raw data storage where the overhead of `std::vector` is unnecessary.
 
 ---
 
@@ -13,116 +11,85 @@ A minimal owning array for trivially copyable types.
 ```cpp
 #include "shm/buffer.hpp"
 
+// Allocate buffer that holds 1024 uint8_ts
 shm::buffer<uint8_t> data(1024);
 
-// Write raw data
-data[0] = 42;
+// Can be passed around to be used as a raw buffer
+sock.recv(data);
 
-// View as span
+// Implicitly convertible to std::span
 std::span<uint8_t> view = data;
 ```
 
 ---
 
-## :brain: When to Use
+## :balance_scale: Why Not `std::vector` or `std::unique_ptr<T[]>`?
 
-Use this when you want:
-
-* A simple owning buffer of raw data
-* No default/value initialisation overhead
-* Contiguous memory with a known size
-* Easy interop with APIs expecting `std::span` or pointers
-
-Typical use cases:
-
-* Binary data / file buffers
-* Networking / serialization
-* POD structs or plain numeric arrays
-* Performance-sensitive allocations
-
----
-
-## :balance_scale: Why Not `std::vector`?
-
-`std::vector` is great—but it does more than you may need:
-
-* Always value-initialises elements
-* Supports resizing, capacity growth, etc.
-* Implies element "lifetime" semantics
-
-`shm::buffer<T>` is intentionally simpler:
-
-* No resizing
-* No capacity management
-* No implicit initialisation
-* Just raw, owned memory + size
+`std::vector` isn't ideal as a raw buffer, it wants to value initialize everything which is slow and the modifying the contents of the vector via `.data()` is sort of an abuse of the api. It's safe for trivial types like a `std::vector<uint8_t>` but that doesn't make it nice. `std::unique_ptr<T[]>` is great except for that fact that you have to send the size of the array everywhere with it, and it doesn't have easy conversion to a `std::span` or iterators for a range based for loop. Plus, anytime you want element access you have a `->` or a `.get()`. `shm::buffer` is sort of what I think `std::dynarray` was supposed to be. I've always found a need for something like this so I made one. I basically just want a raw memory allocation I can't forget to free that is easy to pass around and easy to access.
 
 ---
 
 ## :package: API
 
-### Construction
+Just a quick note to say that I have added clang style stl docs to each header, so if you want the full api it's easier to just look at the source e.g.
 
 ```cpp
-buffer();
-explicit buffer(size_type count);
-buffer(size_type count, const T& value);
-buffer(std::initializer_list<U>);
+/*
+    // Constructors
+    buffer()
+    explicit buffer(size_type count)
+    explicit buffer(size_type count, const value_type& value)
+    template <typename U>
+    buffer(std::initializer_list<U> init) requires std::is_convertible_v<U, T>
+
+    // Copy construct & deleted copy assign
+    explicit buffer(const buffer& other)
+    buffer& operator=(const buffer&) = delete;
+
+    // Move construct and assign
+    constexpr buffer(buffer&& other) noexcept
+    buffer& operator=(buffer&& other) noexcept
+
+    // Destructor
+    ~buffer() noexcept
+
+...
+*/
 ```
 
-* `count` allocates raw storage (uninitialised)
-* Optional fill constructor initialises values
-* Initialiser list copies values into the buffer
+### Constructors
+
+You can create an empty buffer, initialize by size, with or without a value. I've also added support for creation from an initializer list.
+
+```cpp
+ buffer()
+explicit buffer(size_type count)
+explicit buffer(size_type count, const value_type& value)
+template <typename U>
+buffer(std::initializer_list<U> init) requires std::is_convertible_v<U, T>
+```
 
 ---
 
 ### Copy & Move
 
-```cpp
-buffer(const buffer& other);
-buffer(buffer&& other) noexcept;
-buffer& operator=(buffer&& other) noexcept;
-```
+It's explicitly copy-constructable in case you need to duplicate the buffer, but copy assign is deleted. And then its obviously movable in case you need to transfer ownership across function boundaries.
 
-* Copy construction performs a full copy
-* Copy assignment is **disabled**
-* Move is cheap (pointer + size transfer)
+```cpp
+explicit buffer(const buffer& other)
+buffer& operator=(const buffer&) = delete;
+
+constexpr buffer(buffer&& other) noexcept
+buffer& operator=(buffer&& other) noexcept
+```
 
 ---
 
 ### Element Access
 
-```cpp
-T& operator[](size_type i);
-T& at(size_type i);
-T* data();
-T& front();
-T& back();
-```
+For element access it has unchecked `operator[]`, bounds checked `.at()`, then similar to a `std::vector` it has `front()`, `back()` & `data()`.
 
-* `operator[]` uses assertions for bounds checking
-* `at()` throws on out-of-range access
-
----
-
-### Views (Span Support)
-
-```cpp
-std::span<T> span();
-std::span<const T> span() const;
-```
-
-Also provides:
-
-* `first(n)`
-* `last(n)`
-* `subspan(offset[, count])`
-
-Implicit conversion to `std::span` is supported:
-
-```cpp
-std::span<uint8_t> view = buffer;
-```
+Its also convertible to `std::span`, but also provides `.first(n)`, `.last(n)` & `.subspan(offset [, count])`. It also has an explicit `.span()` method.
 
 ---
 
@@ -177,17 +144,3 @@ This allows:
 * Raw byte-wise copying (`memcpy`)
 * No construction/destruction overhead
 * Safe use of low-level memory operations
-
----
-
-## :bulb: Design Notes
-
-This is intentionally a low-level utility:
-
-* Prioritises performance and simplicity
-* Avoids unnecessary abstractions
-* Behaves more like a raw buffer than a container
-
-It’s closest in spirit to the proposed `std::dynarray`, but with stricter constraints and no element construction.
-
-If you need resizing, complex ownership semantics, or non-trivial types, `std::vector` is likely the better choice.

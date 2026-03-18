@@ -2,9 +2,7 @@
 
 ## :bookmark: Overview
 
-A lightweight, thread-safe event primitive for signaling between threads.
-
-Provides Windows-style manual and auto-reset semantics without the boilerplate of `std::condition_variable`.
+A lightweight, thread-safe manual- or auto-reset event for signaling between threads, providing set, reset, and wait semantics without the boilerplate of condition variables.
 
 ---
 
@@ -43,22 +41,6 @@ evt.wait();
 
 ---
 
-## :brain: When to Use
-
-Use this when you want:
-
-* A simple thread signaling mechanism
-* Less boilerplate than `std::condition_variable`
-* A reusable "event" style primitive
-
-Typical use cases:
-
-* Worker -> main thread completion signals
-* Thread coordination without shared predicates
-* One-shot or repeatable notifications
-
----
-
 ## :package: API
 
 ### Constructor
@@ -77,7 +59,6 @@ explicit event(mode mode = mode::manual_reset, bool signaled = false);
 ```cpp
 void wait();
 ```
-
 Block until the event is signaled.
 
 ```cpp
@@ -121,13 +102,4 @@ Reset the event to a non-signaled state.
 * Auto-reset semantics are applied **after a successful wait**
 * `try_wait()` will also consume the signal in auto-reset mode
 
----
-
-## :bulb: Design Notes
-
-This is intentionally a small abstraction over `std::condition_variable`:
-
-* Combines state + synchronization into one object
-* Avoids repeated predicate boilerplate
-* Prioritises clarity over flexibility
 

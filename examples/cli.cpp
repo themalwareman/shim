@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
 
 
     // Test
-    char* args[] = {"program.exe", "--version"};
+    char* args[] = {"program.exe", "--help"};
     auto testres = cli.parse(_countof(args), args);
 
     //auto result = cli.parse(argc, argv);

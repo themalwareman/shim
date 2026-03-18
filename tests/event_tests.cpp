@@ -186,6 +186,9 @@ TEST_CASE("set and reset - auto_reset", "[event][set][reset]") {
     }
 }
 
+/*
+    End-to-end Tests
+*/
 TEST_CASE("wait() - manual_reset - thread signals waiter", "[event][wait][manual_reset]") {
 
     shm::event ev(shm::event::mode::manual_reset);
@@ -196,7 +199,6 @@ TEST_CASE("wait() - manual_reset - thread signals waiter", "[event][wait][manual
         waiter_done.store(true, std::memory_order_release);
     });
 
-    // Give the waiter a moment to block
     std::this_thread::sleep_for(10ms);
     CHECK_FALSE(waiter_done.load());
 
@@ -204,7 +206,7 @@ TEST_CASE("wait() - manual_reset - thread signals waiter", "[event][wait][manual
     waiter.join();
 
     CHECK(waiter_done.load());
-    // manual-reset: event remains signaled
+
     CHECK(ev.try_wait());
 }
 
@@ -237,11 +239,6 @@ TEST_CASE("wait() — auto_reset — thread signals waiter, event resets", "[eve
     // auto-reset: event is no longer signaled
     CHECK_FALSE(ev.try_wait());
 }
-
-
-// ===========================================================================
-// Section 5 — wait_for()
-// ===========================================================================
 
 TEST_CASE("wait_for() — returns false on timeout when not signaled", "[event][wait_for]") {
 
@@ -301,11 +298,6 @@ TEST_CASE("wait_for() — zero timeout acts as non-blocking check", "[event][wai
     ev.set();
     CHECK(ev.wait_for(0ms));
 }
-
-
-// ===========================================================================
-// Section 6 — wait_until()
-// ===========================================================================
 
 TEST_CASE("wait_until() — returns false when deadline already passed", "[event][wait_until]") {
 

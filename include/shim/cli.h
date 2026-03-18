@@ -10,10 +10,9 @@
     shm::cli - a lightweight, modern C++ command-line parser with subcommand support
 */
 
-
 /*
     Todo:
-        Quote handling
+        Do we need quote handling? Say for --option="hello world"
         We could expand expect to have multiple types and guarantee that at least one works? not sure if thats any benfit though
             Could provide a non throwing is_valid<T>?
         Remove the dump method eventually after proving a way to dump the cli results to json or if we no longer need it

@@ -2,7 +2,7 @@
 
 ## :bookmark: Overview
 
-`shm::cli` is a lightweight, modern C++ command-line with a fluent API. The core design of cli can be summarised as text-first. CLI values are always text, so rather than forcing you to declare types for everything up front, `shm::cli` stores everything strings and  lets you declare what type you want at lookup time. If you want type safety at parse-time, you can easily opt in with expectations.
+`shm::cli` is a lightweight, modern C++ command-line with a fluent API. The core design of cli can be summarized as text-first. CLI values are always text, so rather than forcing you to declare types for everything up front, `shm::cli` stores everything strings and  lets you declare what type you want at lookup time. If you want type safety at parse-time, you can easily opt in with expectations.
 
 ---
 
@@ -48,13 +48,13 @@ shm::cli cli("name");
 shm::cli cli("name", "description");
 ```
 
-`cli` is non-copyable and non-movable, construct it once and keep it in scope. The name and description provided here will show up in the cli help output. Not that whilst building the spec both `std::logic_error` and `std::inavlid_argument` may be thrown if the contract is violated or invalid values are given.
+`cli` is non-copyable and non-movable, construct it once and keep it in scope. The name and description provided here will show up in the cli help output. Not that whilst building the spec both `std::logic_error` and `std::invalid_argument` may be thrown if the contract is violated or invalid values are given.
 
 ---
 
 ### Flags
 
-Flags are boolean arguments, their presence on the commnad line implicitly means `true`. They can also be set explicitly via `--flag=true` or `--flag=false`, which is essential in case you need to override a flag that's been given a default of `true`. The point of flags over using options is to prevent a user having to explicitly specify the value i.e. `--flag` instead of `--flag true` which changes the parsing semantics.
+Flags are boolean arguments, their presence on the command line implicitly means `true`. They can also be set explicitly via `--flag=true` or `--flag=false`, which is essential in case you need to override a flag that's been given a default of `true`. The point of flags over using options is to prevent a user having to explicitly specify the value i.e. `--flag` instead of `--flag true` which changes the parsing semantics.
 
 ```cpp
 cli.flag("verbose");
@@ -82,7 +82,7 @@ cli.flag('v', "verbose")
     .defaults(true); // All flags default to false unless specified
 ```
 
-Note you can also use `.repeatable(false)` & `.defaults(false)` which whilst it is already the default behavior, allows you to be truely explicit in your cli spec. Making a flag repeatable allows it to be defined multiple times. It's final value will be the result of parsing its last occurence in the command line, however the point of making a flag repeatable is to allow you to later query the count. i.e. using a flag for verbosity and making it repeatable allows `-vvv` on the command line which produces a count of 3. This would allow you to give the user more granular control over the verbosity level.
+Note you can also use `.repeatable(false)` & `.defaults(false)` which whilst it is already the default behavior, allows you to be truly explicit in your cli spec. Making a flag repeatable allows it to be defined multiple times. It's final value will be the result of parsing its last occurrence in the command line, however the point of making a flag repeatable is to allow you to later query the count. i.e. using a flag for verbosity and making it repeatable allows `-vvv` on the command line which produces a count of 3. This would allow you to give the user more granular control over the verbosity level.
 
 #### Parsing Behavior
 
@@ -140,7 +140,7 @@ There's a few things to unpack here. The fluent apis `help()` & `repeatable()` w
 
 #### `defaults(T value)`
 
-Given our cli is text first, we allow you to pass any type to defaults that satisifies (among a few other restraints) the concept:
+Given our cli is text first, we allow you to pass any type to defaults that satisfies (among a few other restraints) the concept:
 
 ```cpp
 template<typename T>
@@ -155,7 +155,7 @@ So going back to our port example:
 cli.option("port").defaults(1234);
 ```
 
-This works because int has a stringstream operator, whcih allows us to store the cli default as the string "1234". Remember, we're a text first cli. You'll be able to convert it back to an int later when you pull it out of the parse_result.
+This works because int has a stringstream operator, which allows us to store the cli default as the string "1234". Remember, we're a text first cli. You'll be able to convert it back to an int later when you pull it out of the parse_result.
 
 #### `expect<T>()`
 
@@ -172,9 +172,9 @@ template <typename T>
 concept parseable = requires(std::istringstream& s, T& v) { s >> v; };
 ```
 
-For us to verify the conversion to the expected type, we need there to exist an `istringstream` operator that allows us to convert the string to the expected type. The standard provides this for most of the core types such as `float` & `int` etc. Although its worth noting our parsing to `int`, `float` & `double` is a bit stronger than the standard istringstream operator.
+For us to verify the conversion to the expected type, we need there to exist an `istringstream` operator that allows us to convert the string to the expected type. The standard provides this for most of the core types such as `float` & `int` etc. Although its worth noting our parsing to `int`, `float` & `double` is a bit stronger than the standard `istringstream` operator.
 
-#### validator(F&& validator)
+#### `validator(F&& validator)`
 
 The validator api allows you to go beyond a type expectation, it allows you to provide a unary callable predicate (a callable function that takes one argument and returns a bool), to indicate whether or not the given value is acceptable. For example see the validator lambda above for port, it guarantees that the int given on the command line falls within the valid range of port numbers.
 
@@ -184,7 +184,7 @@ You may throw an exception from your validator yourself which we'll let through,
 
 Failed expectations or validations will throw a `std::runtime_error`.
 
-Note that multiple validators may be specified howver only one expectation is allowed.
+Note that multiple validators may be specified however only one expectation is allowed.
 
 ---
 
@@ -205,7 +205,7 @@ Note that multiple validators may be specified howver only one expectation is al
 Positional arguments are matched by their position in the argument list, in the order they were registered. They are always required.
 
 ```cpp
-shm::cli cli("transformer", "transforms input to output")
+shm::cli cli("transformer", "transforms input to output");
 cli.positional("in");
 cli.positional("out");
 ```
@@ -214,7 +214,7 @@ The above spec indicates you would like a cli of the form:
 
 `transformer.exe <in> <out>`
 
-Positional names must nto clash with flags or options as they are pulled from the parse_result by name rather than by index. To avoid a positional argument being mistaken for an option you can use the end of options marker `--` to force all remaining tokens to be treated as positional arguments. For example if your filename began with a hyphen you would need:
+Positional names must not clash with flags or options as they are pulled from the parse_result by name rather than by index. To avoid a positional argument being mistaken for an option you can use the end of options marker `--` to force all remaining tokens to be treated as positional arguments. For example if your filename began with a hyphen you would need:
 
 `transformer.exe -- -myfilein myfile.out`
 
@@ -331,6 +331,8 @@ Returns the nested parse_result scoped to the named subcommand, giving access to
 if (result.subcommand() == "add") {
     auto sub = result["add"];
     auto input = sub.get<std::string>("input");
+    // Could also just have
+    auto value = result["add"].get<std::string>("input");
 }
 ```
 
@@ -340,9 +342,32 @@ This throws if the named subcommand was not the one that was invoked.
 
 #### Help
 
-`-h/--help` is automatically registered on every command and subcommand. Passing it prints the generated help text for that command and exits. Help cannot be disabled without modifying the code.
+`-h/--help` is automatically registered on every command and subcommand. Passing it prints the generated help text for that command and exits. Help cannot be disabled without modifying the code. Yes this is opinionated but I think all clis should have help, so doing it for you feels much easier than you having to constantly check to see if help was specified.
 
-Generated help ouput includes the usage, description, flags, options with type hints, required/default annotations & a subcommand listing where applicable.
+Generated help output includes the usage, description, flags, options with type hints, required/default annotations & a subcommand listing where applicable. e.g.
+
+```
+Usage: vcs [OPTIONS] <COMMAND>
+
+A modern version control system
+
+Flags:
+  -h, --help                   Print help
+      --version                Print version
+  -v, --verbose                Enable verbose output (repeatable)
+      --no-color               Disable colored output
+
+Options:
+  -C, --directory VALUE        Run as if started in this directory (default: .)
+
+Commands:
+  add                          Add file contents to the index
+  commit                       Record changes to the repository
+  init                         Initialise a new repository
+  remote                       Manage set of tracked repositories
+
+Run 'vcs <COMMAND> --help' for more information on a command.
+```
 
 #### Version
 
@@ -361,7 +386,7 @@ The version and help flags are checked for before enforcing the required attribu
 
 ### Exceptions
 
-All user errors (missing required args, unknwon flags, type mismatches & validation failures) throw `std::runtime_error` with a descriptive message. Logic errors or bad names in spec construction will throw a `std::logic_error` or `std::invalid_argument`.
+All user errors (missing required args, unknown flags, type mismatches & validation failures) throw `std::runtime_error` with a descriptive message. Logic errors or bad names in spec construction will throw a `std::logic_error` or `std::invalid_argument`.
 
 Help and version flags trigger a `std::exit(0)` directly rather than throwing so that no exception handling is required for those code paths.
 
