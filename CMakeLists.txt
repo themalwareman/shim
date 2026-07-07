@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 4.1)
 project(shim)
 
 # Header-only library
-add_library(shim INTERFACE)
+add_library(shim INTERFACE
+        include/shim/task.h)
 
 # Add include path
 target_include_directories(shim INTERFACE

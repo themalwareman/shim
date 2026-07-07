@@ -71,16 +71,16 @@ namespace shm {
             ~event() = default;
 
             // Waiting
-            void wait()
+            void wait() const
             template <typename Rep, typename Period>
-            [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
+            [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout) const
             template <typename Clock, typename Duration>
-            [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
-            [[nodiscard]] bool try_wait()
+            [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point) const
+            [[nodiscard]] bool try_wait() const
 
             // Signalling
-            void set()
-            void reset()
+            void set() const
+            void reset() const
 
         */
 
@@ -116,7 +116,7 @@ namespace shm {
         */
 
         // Wait until event is signaled
-        void wait() {
+        void wait() const {
             // Lock the mutex
             std::unique_lock lock(_mutex);
             // Forward to cv wait, waiting on the signal bool
@@ -130,7 +130,7 @@ namespace shm {
         }
 
         template <typename Rep, typename Period>
-        [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout)
+        [[nodiscard]] bool wait_for(const std::chrono::duration<Rep, Period>& timeout) const
         {
             // Grab mutex
             std::unique_lock<std::mutex> lock(_mutex);
@@ -145,7 +145,7 @@ namespace shm {
         }
 
         template <typename Clock, typename Duration>
-        [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point)
+        [[nodiscard]] bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point) const
         {
             // Grab mutex
             std::unique_lock<std::mutex> lock(_mutex);
@@ -160,7 +160,7 @@ namespace shm {
         }
 
         // Check the event state without waiting, preserves auto-reset semantics
-        [[nodiscard]] bool try_wait() {
+        [[nodiscard]] bool try_wait() const {
             std::lock_guard<std::mutex> lock(_mutex);
             bool signaled = _signaled;
             if (signaled && mode::auto_reset == _mode) {
@@ -173,7 +173,7 @@ namespace shm {
             Signalling
         */
 
-        void set() {
+        void set() const {
             std::lock_guard<std::mutex> lock(_mutex);
             _signaled = true;
 
@@ -184,16 +184,16 @@ namespace shm {
             }
         }
 
-        void reset() {
+        void reset() const {
             std::lock_guard lock(_mutex);
             _signaled = false;
         }
 
     private:
-        std::mutex _mutex;
-        std::condition_variable _cv;
+        mutable std::mutex _mutex;
+        mutable std::condition_variable _cv;
         mode _mode;
-        bool _signaled;
+        mutable bool _signaled;
     };
 
 }
