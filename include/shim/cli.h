@@ -160,6 +160,7 @@
 #include <variant>
 #include <iostream>
 #include <charconv>
+#include <optional>
 
 namespace shm {
 
