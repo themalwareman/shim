@@ -89,8 +89,8 @@ namespace shm {
         */
 
         // Construct event in non-signaled or initially signaled state
-        explicit event(mode mode = mode::manual_reset, bool signaled = false)
-            : _mode(mode), _signaled(signaled) {}
+        explicit event(mode event_mode = mode::manual_reset, bool signaled = false)
+            : _mode(event_mode), _signaled(signaled) {}
 
         /*
             Copy/Assign/Move
