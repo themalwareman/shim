@@ -84,7 +84,7 @@ int main() {
     //
     // shm::buffer<std::string> stringBuf(5);
     //
-    // This illustrates that buffer is **not** a general container — it is a low-level
+    // This illustrates that buffer is **not** a general container - it is a low-level
     // utility for fixed-size, trivially constructible types.
 
     // ------------------------------------------------------------------

@@ -4,7 +4,7 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 themalwareman
 
-    shim — small, header-only C++ utilities
+    shim - small, header-only C++ utilities
     https://github.com/themalwareman/shim
 
     shm::buffer - a minimal owning array for trivially copyable types,

@@ -49,8 +49,8 @@ evt.wait();
 explicit event(mode mode = mode::manual_reset, bool signaled = false);
 ```
 
-* `mode` — manual or auto reset behaviour
-* `signaled` — initial state
+* `mode` - manual or auto reset behaviour
+* `signaled` - initial state
 
 ---
 

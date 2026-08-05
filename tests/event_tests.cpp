@@ -7,7 +7,7 @@
 #include <string>
 
 /*
-    test_event.cpp — Catch2 test suite for shm::event
+    test_event.cpp - Catch2 test suite for shm::event
 
     Covers:
         - Construction (default args, explicit mode, initial signal state)
@@ -233,7 +233,7 @@ TEST_CASE("wait() - manual_reset", "[event][wait][manual_reset]") {
 
 }
 
-TEST_CASE("wait() — auto_reset", "[event][wait][auto_reset]") {
+TEST_CASE("wait() - auto_reset", "[event][wait][auto_reset]") {
 
     /*
         Test Cases:
@@ -452,7 +452,7 @@ TEST_CASE("Multiple waiters", "[event][multi_waiter]") {
 
 
 // ===========================================================================
-// Section 8 — Thread-safety stress test
+// Section 8 - Thread-safety stress test
 // ===========================================================================
 
 TEST_CASE("Concurrent set/reset/try_wait does not corrupt state", "[event][thread_safety]") {
@@ -482,14 +482,14 @@ TEST_CASE("Concurrent set/reset/try_wait does not corrupt state", "[event][threa
     stop.store(true);
     for (auto& t : threads) t.join();
 
-    // After stopping we can still set/check cleanly — no UB / crash = pass
+    // After stopping we can still set/check cleanly - no UB / crash = pass
     ev.set();
     CHECK(ev.try_wait());
     ev.reset();
     CHECK_FALSE(ev.try_wait());
 }
 
-TEST_CASE("Concurrent wait_for stress — no deadlock or crash", "[event][thread_safety]") {
+TEST_CASE("Concurrent wait_for stress - no deadlock or crash", "[event][thread_safety]") {
 
     shm::event ev(shm::event::mode::auto_reset);
     constexpr int ROUNDS     = 20;
@@ -520,10 +520,10 @@ TEST_CASE("Concurrent wait_for stress — no deadlock or crash", "[event][thread
 
 
 // ===========================================================================
-// Section 9 — Edge cases
+// Section 9 - Edge cases
 // ===========================================================================
 
-TEST_CASE("Set before wait — wait returns without blocking", "[event][edge_cases]") {
+TEST_CASE("Set before wait - wait returns without blocking", "[event][edge_cases]") {
 
     shm::event ev(shm::event::mode::manual_reset);
     ev.set();

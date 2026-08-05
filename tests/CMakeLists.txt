@@ -24,3 +24,12 @@ target_link_options(event_test PRIVATE
         -static-libgcc
         -static-libstdc++
 )
+
+# Dotenv Tests
+add_executable(dotenv_test dotenv_tests.cpp)
+target_link_libraries(dotenv_test PRIVATE shim catch2)
+target_link_options(dotenv_test PRIVATE
+        -static
+        -static-libgcc
+        -static-libstdc++
+)

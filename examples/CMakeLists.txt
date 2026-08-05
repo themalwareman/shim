@@ -18,3 +18,13 @@ target_link_options(cli PRIVATE
         -static-libgcc
         -static-libstdc++
 )
+
+# Dotenv Example
+add_executable(dotenv dotenv.cpp)
+target_compile_features(dotenv PRIVATE cxx_std_20)
+target_link_libraries(dotenv PRIVATE shim)
+target_link_options(dotenv PRIVATE
+        -static
+        -static-libgcc
+        -static-libstdc++
+)
