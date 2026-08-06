@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include <windows.h>
 
 /*
     Helper class for simulating argc and argv
@@ -1182,4 +1183,276 @@ TEST_CASE("Combined features", "[combined]") {
         REQUIRE(result["add"].get<std::string>("input") == "file.txt");
     }
 
+}
+
+/*
+    RAII helper for setting a real environment variable for the duration of a test,
+    and guaranteeing it's unset afterward so state doesn't leak between sections.
+*/
+class EnvVar {
+public:
+    EnvVar(std::string name, std::string value) : _name(std::move(name)), _value(std::move(value)) {
+        _format = std::format("{}={}", _name, _value);
+#if defined(_WIN32)
+        _putenv(_format.c_str());
+#else
+        setenv(_name.c_str(), _value.c_str(), 1);
+#endif
+    }
+
+    ~EnvVar() {
+#if defined(_WIN32)
+        _putenv_s(_name.c_str(), "");
+#else
+        unsetenv(_name.c_str());
+#endif
+    }
+
+    EnvVar(const EnvVar&) = delete;
+    EnvVar& operator=(const EnvVar&) = delete;
+
+private:
+    std::string _name;
+    std::string _value;
+    std::string _format;
+};
+
+/*
+    RAII helper for writing a temporary .env file to disk for the duration of a
+    test, cleaning it up afterward.
+*/
+class TempDotenv {
+public:
+    explicit TempDotenv(std::string_view content) {
+        static int counter = 0;
+        _path = std::filesystem::temp_directory_path() /
+            ("shim_dotenv_test_" + std::to_string(counter++) + ".env");
+
+        std::ofstream out(_path, std::ios::binary);
+        out << content;
+    }
+
+    ~TempDotenv() {
+        std::error_code ec;
+        std::filesystem::remove(_path, ec);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const { return _path; }
+
+    TempDotenv(const TempDotenv&) = delete;
+    TempDotenv& operator=(const TempDotenv&) = delete;
+
+private:
+    std::filesystem::path _path;
+};
+
+
+/*
+    Environment Variable Tests
+*/
+TEST_CASE("Environment variables", "[environment]") {
+
+    /*
+        Test Cases:
+
+        - Flag not affected by env when .env() not configured
+        - Flag set true via env with empty value
+        - Flag set true via env value "true"
+        - Flag set false via env value "false"
+        - Flag set case-insensitively via env
+        - Invalid env value throws
+        - CLI-specified flag takes precedence over env, no throw on conflict
+        - Option set via env
+        - Option default still applies when env var absent
+        - CLI-specified option takes precedence over env
+        - Required option satisfied via env doesn't throw
+        - Repeatable option not seen on CLI takes single value from env
+        - Subcommand flag/option can be set via env too
+    */
+
+    Args no_args{};
+
+    SECTION("Flag not affected by env when .env() not configured") {
+        EnvVar ev("SHM_TEST_VERBOSE", "true");
+        shm::cli cli("test");
+        cli.flag("verbose"); // no .env() call
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE_FALSE(result.get<bool>("verbose"));
+    }
+
+    // Cant use putenv on windows to set an empty var so disabling tets for now
+    // SECTION("Flag set true via env with empty value") {
+    //     EnvVar ev("SHM_TEST_VERBOSE", "");
+    //     shm::cli cli("test");
+    //     cli.flag("verbose").env("SHM_TEST_VERBOSE");
+    //     auto result = cli.parse(no_args.argc(), no_args.argv());
+    //     REQUIRE(result.get<bool>("verbose"));
+    // }
+
+    SECTION("Flag set true via env value 'true'") {
+        EnvVar ev("SHM_TEST_VERBOSE", "true");
+        shm::cli cli("test");
+        cli.flag("verbose").env("SHM_TEST_VERBOSE");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<bool>("verbose"));
+    }
+
+    SECTION("Flag set false via env value 'false'") {
+        EnvVar ev("SHM_TEST_VERBOSE", "false");
+        shm::cli cli("test");
+        cli.flag("verbose").defaults(true).env("SHM_TEST_VERBOSE");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE_FALSE(result.get<bool>("verbose"));
+    }
+
+    SECTION("Flag set case-insensitively via env") {
+        EnvVar ev("SHM_TEST_VERBOSE", "FaLsE");
+        shm::cli cli("test");
+        cli.flag("verbose").defaults(true).env("SHM_TEST_VERBOSE");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE_FALSE(result.get<bool>("verbose"));
+    }
+
+    SECTION("Invalid env value throws") {
+        EnvVar ev("SHM_TEST_VERBOSE", "maybe");
+        shm::cli cli("test");
+        cli.flag("verbose").env("SHM_TEST_VERBOSE");
+        REQUIRE_THROWS(cli.parse(no_args.argc(), no_args.argv()));
+    }
+
+    SECTION("CLI-specified flag takes precedence over env") {
+        EnvVar ev("SHM_TEST_VERBOSE", "false");
+        Args args{"--verbose"};
+        shm::cli cli("test");
+        cli.flag("verbose").env("SHM_TEST_VERBOSE");
+        auto result = cli.parse(args.argc(), args.argv());
+        REQUIRE(result.get<bool>("verbose"));
+    }
+
+    SECTION("Option set via env") {
+        EnvVar ev("SHM_TEST_OUTPUT", "file.txt");
+        shm::cli cli("test");
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<std::string>("output") == "file.txt");
+    }
+
+    SECTION("Option default still applies when env var absent") {
+        shm::cli cli("test");
+        cli.option("output").defaults(std::string("stdout")).env("SHM_TEST_OUTPUT_MISSING");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<std::string>("output") == "stdout");
+    }
+
+    SECTION("CLI-specified option takes precedence over env") {
+        EnvVar ev("SHM_TEST_OUTPUT", "env.txt");
+        Args args{"--output", "cli.txt"};
+        shm::cli cli("test");
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(args.argc(), args.argv());
+        REQUIRE(result.get<std::string>("output") == "cli.txt");
+    }
+
+    SECTION("Required option satisfied via env doesn't throw") {
+        EnvVar ev("SHM_TEST_OUTPUT", "file.txt");
+        shm::cli cli("test");
+        cli.option("output").required().env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<std::string>("output") == "file.txt");
+    }
+
+    SECTION("Repeatable option not seen on CLI takes single value from env") {
+        EnvVar ev("SHM_TEST_FILE", "a.txt");
+        shm::cli cli("test");
+        cli.option("file").repeatable().env("SHM_TEST_FILE");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        auto files = result.get<std::vector<std::string>>("file");
+        REQUIRE(files.size() == 1);
+        REQUIRE(files[0] == "a.txt");
+    }
+
+    SECTION("Subcommand option can be set via env") {
+        EnvVar ev("SHM_TEST_INPUT", "sub.txt");
+        Args args{"add"};
+        shm::cli cli("test");
+        auto& add = cli.subcommand("add");
+        add.option("input").required().env("SHM_TEST_INPUT");
+        auto result = cli.parse(args.argc(), args.argv());
+        REQUIRE(result["add"].get<std::string>("input") == "sub.txt");
+    }
+}
+
+/*
+    Dotenv File Tests
+*/
+TEST_CASE("Dotenv file loading", "[environment][dotenv]") {
+
+    /*
+        Test Cases:
+
+        - Dotenv file value sets flag
+        - Dotenv file value sets option
+        - Dotenv file takes precedence over real environment variable
+        - CLI value takes precedence over dotenv file value
+        - Missing dotenv file path throws at parse time
+        - Malformed dotenv content still loads valid keys around it
+    */
+
+    Args no_args{};
+
+    SECTION("Dotenv file value sets flag") {
+        TempDotenv env(R"(SHM_TEST_VERBOSE=true)");
+        shm::cli cli("test");
+        cli.dotenv(env.path());
+        cli.flag("verbose").env("SHM_TEST_VERBOSE");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<bool>("verbose"));
+    }
+
+    SECTION("Dotenv file value sets option") {
+        TempDotenv env(R"(SHM_TEST_OUTPUT=fromdotenv.txt)");
+        shm::cli cli("test");
+        cli.dotenv(env.path());
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<std::string>("output") == "fromdotenv.txt");
+    }
+
+    SECTION("Dotenv file takes precedence over real environment variable") {
+        EnvVar ev("SHM_TEST_OUTPUT", "fromenv.txt");
+        TempDotenv env(R"(SHM_TEST_OUTPUT=fromdotenv.txt)");
+        shm::cli cli("test");
+        cli.dotenv(env.path());
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<std::string>("output") == "fromdotenv.txt");
+    }
+
+    SECTION("CLI value takes precedence over dotenv file value") {
+        TempDotenv env(R"(SHM_TEST_OUTPUT=fromdotenv.txt)");
+        Args args{"--output", "fromcli.txt"};
+        shm::cli cli("test");
+        cli.dotenv(env.path());
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(args.argc(), args.argv());
+        REQUIRE(result.get<std::string>("output") == "fromcli.txt");
+    }
+
+    SECTION("Missing dotenv file path throws at parse time") {
+        shm::cli cli("test");
+        cli.dotenv("/this/path/definitely/does/not/exist.env");
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        REQUIRE_THROWS(cli.parse(no_args.argc(), no_args.argv()));
+    }
+
+    SECTION("Multiple keys in dotenv file resolve independently") {
+        TempDotenv env("SHM_TEST_VERBOSE=true\nSHM_TEST_OUTPUT=multi.txt\n");
+        shm::cli cli("test");
+        cli.dotenv(env.path());
+        cli.flag("verbose").env("SHM_TEST_VERBOSE");
+        cli.option("output").env("SHM_TEST_OUTPUT");
+        auto result = cli.parse(no_args.argc(), no_args.argv());
+        REQUIRE(result.get<bool>("verbose"));
+        REQUIRE(result.get<std::string>("output") == "multi.txt");
+    }
 }

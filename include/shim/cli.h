@@ -142,7 +142,14 @@
         to make it work, but I think they're all worthwhile. It'll auto register the flag
         and handle the printing of the version and exiting.
 
+    Should we support dotenv files?
+        Yes. One idea for this cli parser is to make it easier to dockerize C++ programs in
+        general so having support for dotenv loading and parameters being set by environment
+        variables feels like a big upside.
+
 */
+
+#include "dotenv.h"
 
 #include <string>
 #include <algorithm>
@@ -161,6 +168,8 @@
 #include <iostream>
 #include <charconv>
 #include <optional>
+#include <cstdlib>
+#include <cctype>
 
 namespace shm {
 
@@ -297,6 +306,18 @@ namespace shm {
             }
 
             /*
+                For explicit flag evaluation like --flag=true we want case-insensitive string comparison
+                to support false,False,true,True etc.
+            */
+            inline bool iequals(std::string_view a, std::string_view b)
+            {
+                return a.size() == b.size() &&
+                       std::ranges::equal(a, b, [](unsigned char c1, unsigned char c2) {
+                           return std::tolower(c1) == std::tolower(c2);
+                       });
+            }
+
+            /*
                 The base parsing method is istringstream >>, that's the bare minimum,
                 and it's easy for people to extend without messing with the internals
                 of this header. What we can do though is strengthen some of them a bit
@@ -356,16 +377,31 @@ namespace shm {
             }
 
             /*
-                For explicit flag evaluation like --flag=true we want case-insensitive string comparison
-                to support false,False,true,True etc.
+                Explicit bool parsing
             */
-            inline bool iequals(std::string_view a, std::string_view b)
-            {
-                return a.size() == b.size() &&
-                       std::ranges::equal(a, b, [](unsigned char c1, unsigned char c2) {
-                           return std::tolower(c1) == std::tolower(c2);
-                       });
+            template<>
+            inline bool parse<bool>(std::string_view sv) {
+                bool value;
+
+                // Present but empty it considered true
+                if (sv.empty()) {
+                    value = true;
+                }
+                // Otherwise we parse the value
+                else if (detail::cli::iequals("true", sv)) {
+                    value = true;
+                }
+                else if (detail::cli::iequals("false", sv)) {
+                    value = false;
+                }
+                else {
+                    throw parse_error(std::format("Failed to parse '{}' as '{}'", sv, type_name<bool>()));
+                }
+
+                return value;
             }
+
+
 
             /*
                 This helpability CRTP add-on allows something to inherit fluent chaining
@@ -397,7 +433,7 @@ namespace shm {
             /*
                 This repeatability CRTP add-on provides fluent chaining for indicating if
                 an argument is repeatable or not. We have our public method for setting
-                teh repeatability state, a protected method for checking that state and
+                the repeatability state, a protected method for checking that state and
                 the private storage which is an implementation detail.
              */
             template<typename Derived>
@@ -418,6 +454,37 @@ namespace shm {
             private:
                 // Non-repeatable by default
                 bool _repeatable = false;
+            };
+
+            /*
+                This environmentability CRTP add-on provides fluent chaining for indicating
+                an argument can be read from an environment variable. We have our public
+                method for setting the name of the environment variable. A protected method
+                for checking if one has been set and private storage which is an implementation
+                detail.
+             */
+            template<typename Derived>
+            class environmentability  {
+                /*
+                    // Configuration
+                    Derived& env(std::string_view environment)
+
+                    // Access
+                    [[nodiscard]] bool has_environment() const
+                    [[nodiscard]] const std::string& environment() const
+                */
+            public:
+                // The shared fluent api, both options and flags can be set from the environment
+                Derived& env(std::string_view environment) {_environment = environment; return static_cast<Derived&>(*this); }
+            protected:
+                [[nodiscard]] bool has_environment() const {
+                    return _environment.has_value();
+                }
+
+                [[nodiscard]] const std::string& environment() const {return _environment.value();}
+            private:
+                // Environment variable name
+                std::optional<std::string> _environment;
             };
 
 
@@ -653,7 +720,8 @@ namespace shm {
 
     class flag : public detail::cli::argument<flag>,
                     public detail::cli::helpability<flag>,
-                    public detail::cli::repeatability<flag> {
+                    public detail::cli::repeatability<flag>,
+                    public detail::cli::environmentability<flag> {
         /*
             We don't want the user instantiating a flag directly so we
             made the constructor private and we make the command class
@@ -740,7 +808,8 @@ namespace shm {
     class option : public detail::cli::argument<option>,
                     public detail::cli::helpability<option>,
                     public detail::cli::verifiability<option>,
-                    public detail::cli::repeatability<option> {
+                    public detail::cli::repeatability<option>,
+                    public detail::cli::environmentability<option> {
         friend class command;
         friend class cli;
         friend class parse_result;
@@ -917,6 +986,10 @@ namespace shm {
 
             // Parsing
             void parse(int argc, char* argv[])
+            // Environment
+            void environmentalize(shm::dotenv& dotenv)
+            // Validation
+            void validate()
 
             // Subcommands
             command& subcommand(std::string_view name, std::string_view description = {})
@@ -957,7 +1030,7 @@ namespace shm {
         void parse(int argc, char* argv[]) {
 
             // If/when we come across positional args we need to keep track of which index we're at
-            // I think we could figure this out by walking the list and looking at whats already been seen
+            // I think we could figure this out by walking the list and looking at what's already been seen
             // but that's a fair bit slower.
             size_t positional_index = 0;
 
@@ -1035,15 +1108,14 @@ namespace shm {
                             using T = std::decay_t<decltype(var)>;
                             if constexpr (std::is_same_v<T, shm::flag>) {
                                 // It's a long flag -> validate that the value is true or false
-                                if (detail::cli::iequals("true", value)) {
-                                    var.set(true);
+                                bool flag_value;
+                                try {
+                                    flag_value = detail::cli::parse<bool>(value);
                                 }
-                                else if (detail::cli::iequals("false", value)) {
-                                    var.set(false);
-                                }
-                                else {
+                                catch (const detail::cli::parse_error&) {
                                     throw std::runtime_error(std::format("Unrecognized flag value '{}' for '{}', expected true or false", value, argument));
                                 }
+                                var.set(flag_value);
                             }
                             else if constexpr (std::is_same_v<T, shm::option>) {
                                 var.set(value);
@@ -1084,7 +1156,7 @@ namespace shm {
                                 const bool first_in_pack = (j == 1);
                                 // Is this also the last character in the short option pack?
                                 const bool last_in_pack  = (j + 1 == token.length());
-                                // Both can be true if its bnoth the last and the first
+                                // Both can be true if its both the last and the first
 
                                 if (first_in_pack) {
                                     // This is first short name in sequence meaning either we have
@@ -1164,13 +1236,65 @@ namespace shm {
 
             // Parsing should now be complete
 
-            // Help check sits naturally here, after parsing but before returning for validation. We may have done some
-            // unnecessary legwork but this is much cleaner than my other solutions. Throwing is the easiest way to surface
-            // help at the correct level.
+            /*
+                I think putting the help check here is the easiest, after parsing but before validation we can
+                easily check for the presence of "help" using our resolve/seen lookups. Every command gets a
+                default registered help flag so this check is safe. We may have done some extra legwork like
+                parsing for various subcommands etc. but this is much cleaner than the other solutions I had.
+
+                Throwing up a custom exception is the easiest way to surface the help text for the correct
+                command level rather than trying to cleanly handle the unrolling of the recursion.
+            */
             if (std::get<shm::flag>(resolve("help")).seen()) {
                 throw detail::cli::help_error(help());
             }
+        }
 
+        // Load from the environment
+        void environmentalize(shm::dotenv& dotenv) {
+            // Walk each arg at this layer
+            for (auto& arg : _args) {
+                std::visit([&](auto& var) {
+                    using T = std::decay_t<decltype(var)>;
+                    if constexpr (std::is_same_v<T, shm::flag>) {
+                        if (var.has_environment() && not var.seen()) {
+                            std::optional<std::string> env_value;
+                            if (dotenv.contains(var.environment())) {
+                                env_value = dotenv.at(var.environment());
+                            }
+                            else if (const char* env = std::getenv(var.environment().c_str()); nullptr != env) {
+                                env_value = env;
+                            }
+
+                            if (env_value) {
+                                bool flag_value;
+                                try {
+                                    flag_value = detail::cli::parse<bool>(env_value.value());
+                                }
+                                catch (const detail::cli::parse_error&) {
+                                    throw std::runtime_error(std::format("Unrecognized flag value '{}' for '{}', expected true or false", env_value.value(), var.long_name()));
+                                }
+                                var.set(flag_value);
+                            }
+                        }
+                    }
+                    else if constexpr (std::is_same_v<T, shm::option>) {
+                        if (var.has_environment() && not var.seen()) {
+                            if (dotenv.contains(var.environment())) {
+                                var.set(dotenv.at(var.environment()));
+                            }
+                            else if (const char* env = std::getenv(var.environment().c_str()); nullptr != env) {
+                                var.set(env);
+                            }
+                        }
+                    }
+                }, arg);
+            }
+
+            // Recurse environmentalization if subcommand specified
+            if (_active_subcommand.has_value()) {
+                _commands.at(_active_subcommand.value()).environmentalize(dotenv);
+            }
         }
 
         // Validate required options were specified & all positionals were provided
@@ -1761,6 +1885,9 @@ namespace shm {
 
             // Version
             cli& version(std::string_view version)
+
+            // Dotenv
+            cli& dotenv(std::filesystem::path path)
         */
     public:
         // Constructor
@@ -1800,6 +1927,26 @@ namespace shm {
                 std::exit(0);
             }
 
+            /*
+                The CLI has been fully parsed now, however each argument may inherit a value from an environment
+                variable if it was set up to do so. Handle injecting anything from the environment here.
+            */
+            // Default to an empty dotenv
+            shm::dotenv dotenv;
+            // If we were given one then try to load it
+            if (_dotenv.has_value()) {
+                try {
+                    dotenv = shm::dotenv::load(_dotenv.value());
+                }
+                catch (const std::exception& e) {
+                    // Convert any dotenv exception into a cli focused one for clarity
+                    throw std::runtime_error(std::format("Failed to load the specified dotenv file '{}': {}", _dotenv.value().string(), e.what()));
+                }
+            }
+
+            // Now attempt value injection from the environment
+            environmentalize(dotenv);
+
             // Finally validate
             validate();
 
@@ -1817,9 +1964,18 @@ namespace shm {
             return *this;
         }
 
+        cli& dotenv(std::filesystem::path path) {
+            if (_dotenv.has_value()) {
+                throw std::logic_error("dotenv has already been set");
+            }
+            _dotenv = path;
+            return *this;
+        }
+
     private:
         // Has the cli already been parsed?
         bool _parsed = false;
         std::optional<std::string> _version;
+        std::optional<std::filesystem::path> _dotenv;
     };
 }
